@@ -3,22 +3,28 @@ import tkinter as tk
 from PIL import Image, ImageTk
 import numpy as np
 from threading import Timer
+from tkinter import ttk
 
 class App:
     def __init__(self):
         window = tk.Tk()
-        self.image_resolution = (640, 480)
+        self.image_resolution = (600, 400)
         self.zoom_pos = (0, 0)
         self.zoom_multiplier = 1
         self.area_x = (-2.0, 1.0)
         self.area_y = (-1.0, 1.0)
         self.zoom_enabled = True
         self.zoom_ticks = 0
-        self.timer = Timer(0.2, lambda:0)
+        self.timer = Timer(0.2, lambda:None)
+        self.precision = 50
+
+        #window config
+        window.title("CUDAbrot")
+        window.tk.call('wm', 'iconphoto', window._w, tk.PhotoImage(file='icon.png'))
 
 
         #main frames
-        frm_settings = tk.Frame(master=window, width=200)
+        frm_settings = tk.Frame(master=window, width=200, borderwidth=10)
         frm_settings.pack(fill=tk.Y, side=tk.LEFT)
 
         frm_image = tk.Frame(master=window, bg="white")
@@ -27,18 +33,28 @@ class App:
         title = tk.Label(master=frm_settings, text="CUDAbrot v0.1.0")
         title.pack()
 
+        ttk.Separator(master=frm_settings).pack(fill="x")
+
 
         #device
+        frm_device = tk.Frame(master=frm_settings)
+        frm_device.pack()
         str_device = tk.StringVar()
         
         self.device_list = ["CPU"]
         for i in range(torch.cuda.device_count()):
             self.device_list.append(torch.cuda.get_device_name(i))
         
-        menu_device = tk.OptionMenu(frm_settings, str_device,
-            command=self.set_device, *self.device_list)
+        lbl_device = tk.Label(master=frm_device,
+            text="Rendering device:")
+        lbl_device.pack()
+
+        menu_device = tk.OptionMenu(frm_device, str_device,
+        *self.device_list, command=self.set_device)
         menu_device.pack()
         str_device.set("CPU")
+
+        ttk.Separator(master=frm_settings).pack(fill="x")
 
 
         #resolution
@@ -61,6 +77,18 @@ class App:
             value="1280x720", command=self.set_resolution)
         R2.pack()
 
+        lbl_custom_resolution = tk.Label(master=frm_resolution,
+            text="Custom resolution:")
+        lbl_custom_resolution.pack()
+        self.ent_custom_res = tk.Entry(master=frm_resolution, textvariable="kek")
+        self.ent_custom_res.pack()
+        self.ent_custom_res.insert(-1, "1920x1080")
+        res_update = tk.Button(master=frm_resolution, text="Set resolution",
+            command=self.set_custom_resolution)
+        res_update.pack()
+
+        ttk.Separator(master=frm_settings).pack(fill="x")
+
 
         #zoom
         frm_zoom = tk.Frame(master=frm_settings)
@@ -70,6 +98,18 @@ class App:
         zoom_button = tk.Button(master=frm_settings, text="Reset zoom", command=self.zoom_reset)
         zoom_button.pack()
 
+        ttk.Separator(master=frm_settings).pack(fill="x")
+
+
+        #precision
+        frm_precision = tk.Frame(master=frm_settings)
+        frm_precision.pack()
+        lbl_precision = tk.Label(master=frm_precision, text="Rendering precision (iterations): ")
+        lbl_precision.pack()
+        scale_precision = tk.Scale(master=frm_precision, from_=30, to=5000,
+            orient=tk.HORIZONTAL, command = self.set_precision)
+        scale_precision.pack()
+        scale_precision.set(self.precision)
 
         #image
         self.canvas = tk.Canvas(frm_image, width=self.image_resolution[0],
@@ -112,7 +152,7 @@ class App:
         real_part, imag_part = torch.meshgrid(axis_x, axis_y)
         z_1 = (real_part + 1j * imag_part).to(dtype=torch.complex128)
         z_n = z_1.clone()  
-        for i in range(50):
+        for i in range(self.precision):
             z_n = z_n ** 2 + z_1
 
         image = (torch.abs(z_n.T) < 2).cpu().numpy()
@@ -121,13 +161,26 @@ class App:
 
 
     def set_resolution(self):
-        width, height = self.str_resolution.get().split("x")
+        self._set_resolution(self.str_resolution)
+
+    def set_custom_resolution(self):
+        self._set_resolution(self.ent_custom_res)
+
+    def _set_resolution(self, resolution):
+        width, height = resolution.get().split("x")
         self.canvas.config(width=int(width), height=int(height))
-        self.image_resolution=(int(width), int(height))
+        self.image_resolution = (int(width), int(height))
+
+        #rescale area ratio
+        image_ratio = self.image_resolution[1] / self.image_resolution[0]
+        dx = self.area_x[1] - self.area_x[0]
+        self.area_y = (self.area_y[0],
+            self.area_y[0] + dx * image_ratio)
+        self.update_image()
 
 
     def set_device(self, str_device):
-        index=self.device_list.index(str_device)
+        index = self.device_list.index(str_device)
         if index == 0: self.device = torch.device("cpu") # 0 is cpu
         else: self.device = torch.device(f"cuda:{index-1}")
 
@@ -154,5 +207,10 @@ class App:
         self.update_image()
 
 
-new=App()
+    def set_precision(self, value):
+        self.precision = int(value)
+        self.update_image()
+
+
+if __name__ == "__main__": new=App()
 
