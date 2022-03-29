@@ -4,11 +4,14 @@ from PIL import Image, ImageTk
 import numpy as np
 from threading import Timer
 from tkinter import ttk
+from tkinter import colorchooser
+import colorsys
+import datetime
 
 class App:
     def __init__(self):
         window = tk.Tk()
-        self.image_resolution = (600, 400)
+        self.image_resolution = (640, 480)
         self.zoom_pos = (0, 0)
         self.zoom_multiplier = 1
         self.area_x = (-2.0, 1.0)
@@ -17,6 +20,8 @@ class App:
         self.zoom_ticks = 0
         self.timer = Timer(0.2, lambda:None)
         self.precision = 50
+        self.start_color = (0, 0, 0)
+        self.stop_color = (255, 255, 255)
 
         #window config
         window.title("CUDAbrot")
@@ -106,10 +111,56 @@ class App:
         frm_precision.pack()
         lbl_precision = tk.Label(master=frm_precision, text="Rendering precision (iterations): ")
         lbl_precision.pack()
-        scale_precision = tk.Scale(master=frm_precision, from_=30, to=5000,
+        scale_precision = tk.Scale(master=frm_precision, from_=30, to=2000,
             orient=tk.HORIZONTAL, command = self.set_precision)
         scale_precision.pack()
         scale_precision.set(self.precision)
+
+        ttk.Separator(master=frm_settings).pack(fill="x")
+
+
+        #colors
+        frm_color = tk.Frame(master=frm_settings)
+        frm_color.pack()
+        
+        self.color_type = tk.StringVar()
+        C1 = tk.Radiobutton(master=frm_color, text="RGB",
+            variable=self.color_type, 
+            value="RGB", command=self.update_image)
+        C1.pack()
+        C1.select()
+
+        C2 = tk.Radiobutton(master=frm_color, text="HSV",
+            variable=self.color_type, 
+            value="HSV", command=self.update_image)
+        C2.pack()
+
+        frm_color_buttons = tk.Frame(master=frm_color)
+        frm_color_buttons.pack(side=tk.LEFT)
+        lbl_start_color = tk.Label(master=frm_color_buttons, text="Select start color")
+        lbl_start_color.pack()
+
+        lbl_stop_color = tk.Label(master=frm_color_buttons, text="Select stop color")
+        lbl_stop_color.pack()
+
+        self.start_color_button = tk.Button(master=frm_color, background=self.color_as_hex("start"),
+            command=self.select_start_color)
+        self.start_color_button.pack()
+
+        self.stop_color_button = tk.Button(master=frm_color, background=self.color_as_hex("stop"),
+            command=self.select_stop_color)
+        self.stop_color_button.pack()
+
+        ttk.Separator(master=frm_settings).pack(fill="x")
+
+        #save image
+        frm_save = tk.Frame(master=frm_settings)
+        frm_save.pack()
+        lbl_save = tk.Label(master=frm_save, text="Save rendered image")
+        lbl_save.pack()
+        save_button = tk.Button(master=frm_save, text="Save", command=self.save_image)
+        save_button.pack()
+
 
         #image
         self.canvas = tk.Canvas(frm_image, width=self.image_resolution[0],
@@ -127,11 +178,11 @@ class App:
 
 
     def update_image(self):
-        width, height = self.image_resolution
-
         #18.3.2022 19:17 byl proveden příspěvek do státního rozpočtu
 
         #updating area
+        width, height = self.image_resolution
+
         x0, x1 = self.area_x
         y0, y1 = self.area_y
         px,py = self.zoom_pos
@@ -145,17 +196,39 @@ class App:
         y = y0 + (y1 - y0) * py / h
         self.area_y = (y - (y - y0) * m, y + (y1 - y) * m)
 
+        #getting color
+        start_color = self.start_color
+        stop_color = self.stop_color
+        if self.color_type.get() == "HSV":
+            start_color = self.rgb_to_hsv(start_color)
+            stop_color = self.rgb_to_hsv(stop_color)
+        a, b, c = start_color
+        x, y, z = stop_color
+
+        colors = torch.stack((torch.linspace(a, x, self.precision, device=self.device),
+            torch.linspace(b, y, self.precision, device=self.device),
+            torch.linspace(c, z, self.precision, device=self.device)), dim=-1)
+
         #rendering area
         axis_x = torch.linspace(*self.area_x, width, device=self.device)
         axis_y = torch.linspace(*self.area_y, height, device=self.device)
         
         real_part, imag_part = torch.meshgrid(axis_x, axis_y)
-        z_1 = (real_part + 1j * imag_part).to(dtype=torch.complex128)
-        z_n = z_1.clone()  
-        for i in range(self.precision):
-            z_n = z_n ** 2 + z_1
+        z_1 = (real_part + 1j * imag_part).to(dtype=torch.complex64)
+        z_n = z_1.clone()
+        image = torch.zeros(3, width, height, device=self.device, dtype=torch.uint8)
 
-        image = (torch.abs(z_n.T) < 2).cpu().numpy()
+        #rendering loop
+        for color in colors:
+            if self.color_type.get() == "HSV":
+                color = self.hsv_to_rgb(color).to(self.device)
+            color = color.to(dtype=torch.uint8)
+            color = color.unsqueeze(1).unsqueeze(1).repeat(1, width, height)
+            z_n = torch.square(z_n) + z_1
+            mask = (torch.square(z_n.real) + torch.square(z_n.imag) < 4).repeat(3,1,1)
+            image[mask] = color[mask]
+            
+        image = image.permute(2,1,0).cpu().numpy().astype(np.uint8)
         self.image = ImageTk.PhotoImage(image=Image.fromarray(image))
         self.canvas.itemconfig(self.image_container, image=self.image)
 
@@ -210,6 +283,33 @@ class App:
     def set_precision(self, value):
         self.precision = int(value)
         self.update_image()
+
+    def select_start_color(self):
+        self.start_color = colorchooser.askcolor(title="Select start color")[0]
+        self.start_color_button.config(background=self.color_as_hex("start"))
+        self.update_image()
+
+    def select_stop_color(self):
+        self.stop_color = colorchooser.askcolor(title="Select stop color")[0]
+        self.stop_color_button.config(background=self.color_as_hex("stop"))
+        self.update_image()
+
+    def color_as_hex(self, color):
+        if color == "start": return "#{:02x}{:02x}{:02x}".format(*self.start_color)
+        else: return "#{:02x}{:02x}{:02x}".format(*self.stop_color)
+
+    def rgb_to_hsv(self, color):
+        r, g, b = color
+        return torch.tensor(colorsys.rgb_to_hsv(r/255, g/255, b/255))
+
+    def hsv_to_rgb(self, color):
+        h, s, v = color
+        return torch.tensor(colorsys.hsv_to_rgb(h, s, v))*255
+
+    def save_image(self):
+        image = ImageTk.getimage(self.image)
+        filename = datetime.datetime.now().strftime('%H-%M-%S')
+        image.save(f"./{filename}.bmp")
 
 
 if __name__ == "__main__": new=App()
