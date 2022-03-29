@@ -1,6 +1,8 @@
 # CUDAbrot
 
-CUDAbrot is a simple GUI tool for interactive rendering of the Mandelbrot fractal. Meant mainly as a learning project.
+CUDAbrot is a simple GUI tool for rendering the Mandelbrot fractal. Meant mainly as a learning project.
+
+![preview](./images/preview.png)
 
 ## Installation
 
@@ -21,6 +23,5 @@ Just run the .py file
 python3 cudabrot.py
 ```
 
-## To be implemented
-- color gradient
-- exporting image to file 
+## To be done
+- optimization
