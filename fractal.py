@@ -25,7 +25,8 @@ class App:
 
         #window config
         window.title("CUDAbrot")
-        window.tk.call('wm', 'iconphoto', window._w, tk.PhotoImage(file='icon.png'))
+        try: window.tk.call('wm', 'iconphoto', window._w, tk.PhotoImage(file='icon.png'))
+        except: pass
 
 
         #main frames
@@ -170,6 +171,7 @@ class App:
 
         self.canvas.bind("<Button-4>", self.wait_for_zoom) #zoom in
         self.canvas.bind("<Button-5>", self.wait_for_zoom) #zoom out
+        self.canvas.bind("<MouseWheel>", self.wait_for_zoom) #windows zoom
 
         #run app
         self.set_device("CPU")
@@ -266,10 +268,11 @@ class App:
 
     def zoom(self, event):
         self.zoom_pos = (event.x, event.y)
-        if event.num == 5:
+        if event.num == 5 or event.delta < 0:
             self.zoom_multiplier = 1.1**self.zoom_ticks
-        else:
+        elif event.num == 4 or event.delta > 0:
             self.zoom_multiplier = 1/1.1**self.zoom_ticks
+
         self.zoom_ticks = 0
         self.update_image()
         self.zoom_multiplier = 1
