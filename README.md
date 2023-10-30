@@ -1,5 +1,6 @@
 # CUDAbrot
 
+# EDIT: it's absolutely broken, don't look at it. I'll make a better one for web using openGL, when i have time
 CUDAbrot is a simple GUI tool for rendering the Mandelbrot fractal. Meant mainly as a learning project.
 
 ![program preview](./images/preview.png)
